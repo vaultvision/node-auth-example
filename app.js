@@ -72,23 +72,18 @@ app.use(session({
 app.use("/static", express.static(config.STATIC_DIR));
 
 app.get('/', (req, res) => {
+    const data = {
+        user: req.session.userinfo,
+        user_json: JSON.stringify(req.session.userinfo, null, " "),
+        oidc: {
+            issuer_url: config.VV_ISSUER_URL,
+        },
+    };
     getOidcClient().then((oidcClient) => {
-        res.render('index', {
-            user: req.session.userinfo,
-            user_json: JSON.stringify(req.session.userinfo, null, " "),
-            oidc: {
-                issuer_url: config.VV_ISSUER_URL,
-            },
-        });
+        res.render('index', data);
     }).catch((err) => {
-        res.render('index', {
-            user: req.session.userinfo,
-            user_json: JSON.stringify(req.session.userinfo, null, " "),
-            oidc: {
-                issuer_url: config.VV_ISSUER_URL,
-                error: err,
-            },
-        });
+        data.oidc.error = err;
+        res.render('index', data);
     });
 });
 
