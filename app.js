@@ -126,35 +126,6 @@ app.get('/login', (req, res) => {
     res.redirect('/auth/login');
 });
 
-// /introspect calls the introspection[1] endpoint. You may use this to see if
-// the given token is still active.
-//
-// [1] https://datatracker.ietf.org/doc/html/rfc7662
-app.get('/introspect', (req, res) => {
-    getOidcClient().then((oidcClient) => {
-        oidcClient.introspect(
-            // For vault vision, we allow checking both the access_token and
-            // the id_token.
-            req.session.sessionTokens.access_token,
-        ).then((introspectRes) => {
-            res.status(200);
-            res.json({
-                response: introspectRes,
-            });
-        })
-    }).catch((err) => {
-        const data = {
-            user: req.session.userinfo,
-            user_json: JSON.stringify(req.session.userinfo, null, " "),
-            oidc: {
-                issuer_url: config.VV_ISSUER_URL,
-            },
-        };
-        data.oidc.error = err;
-        res.render('index', data);
-    });
-});
-
 // /auth/login kicks off the OIDC flow by redirecting to Vault Vision. Once
 // authentication is complete the user will be returned to /auth/callback.
 app.get('/auth/login', authMiddleware());
@@ -238,6 +209,35 @@ app.get('/settings', (req, res) => {
 // This works by using an oidc prompt named "settings". When the user returns
 // your session will be updated to reflect any changes they made.
 app.get('/auth/settings', authMiddleware("settings"));
+
+// /introspect calls the introspection[1] endpoint. You may use this to see if
+// the given token is still active.
+//
+// [1] https://datatracker.ietf.org/doc/html/rfc7662
+app.get('/introspect', (req, res) => {
+    getOidcClient().then((oidcClient) => {
+        oidcClient.introspect(
+            // For vault vision, we allow checking both the access_token and
+            // the id_token.
+            req.session.sessionTokens.access_token,
+        ).then((introspectRes) => {
+            res.status(200);
+            res.json({
+                response: introspectRes,
+            });
+        })
+    }).catch((err) => {
+        const data = {
+            user: req.session.userinfo,
+            user_json: JSON.stringify(req.session.userinfo, null, " "),
+            oidc: {
+                issuer_url: config.VV_ISSUER_URL,
+            },
+        };
+        data.oidc.error = err;
+        res.render('index', data);
+    });
+});
 
 app.use(function (req, res, next) {
     next(createError(404));
