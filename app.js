@@ -52,6 +52,39 @@ function getOidcClient() {
     });
 }
 
+function authMiddleware(prompt) {
+    return function (req, res) {
+        getOidcClient().then((oidcClient) => {
+            const gens = openidClient.generators;
+            const nonce = gens.nonce();
+            const state = gens.state();
+            const codeVerifier = gens.codeVerifier();
+            const codeChallenger = gens.codeChallenge(codeVerifier);
+
+            req.session.code_verifier = codeVerifier;
+            req.session.nonce = nonce;
+            req.session.state = state;
+
+            const opts = {
+                scope: 'openid email profile',
+                resource: oidcCallbackUrl,
+                code_challenge: codeChallenger,
+                code_challenge_method: 'S256',
+                nonce: nonce,
+                state: state,
+            }
+            if (prompt) {
+                opts["prompt"] = prompt;
+            }
+
+            const redir = oidcClient.authorizationUrl(opts);
+            res.redirect(redir);
+        }).catch((err) => {
+            res.redirect('/');
+        });
+    };
+}
+
 const app = express();
 app.set('view engine', 'ejs');
 app.use(logger('dev'));
@@ -93,33 +126,38 @@ app.get('/login', (req, res) => {
     res.redirect('/auth/login');
 });
 
-// /auth/login kicks off the OIDC flow by redirecting to Vault Vision. Once
-// authentication is complete the user will be returned to /auth/callback.
-app.get('/auth/login', (req, res) => {
+// /introspect calls the introspection[1] endpoint. You may use this to see if
+// the given token is still active.
+//
+// [1] https://datatracker.ietf.org/doc/html/rfc7662
+app.get('/introspect', (req, res) => {
     getOidcClient().then((oidcClient) => {
-        const gens = openidClient.generators;
-        const nonce = gens.nonce();
-        const state = gens.state();
-        const codeVerifier = gens.codeVerifier();
-        const codeChallenger = gens.codeChallenge(codeVerifier);
-
-        req.session.code_verifier = codeVerifier;
-        req.session.nonce = nonce;
-        req.session.state = state;
-
-        const redir = oidcClient.authorizationUrl({
-            scope: 'openid email profile',
-            resource: oidcCallbackUrl,
-            code_challenge: codeChallenger,
-            code_challenge_method: 'S256',
-            nonce: nonce,
-            state: state,
-        });
-        res.redirect(redir);
+        oidcClient.introspect(
+            // For vault vision, we allow checking both the access_token and
+            // the id_token.
+            req.session.sessionTokens.access_token,
+        ).then((introspectRes) => {
+            res.status(200);
+            res.json({
+                response: introspectRes,
+            });
+        })
     }).catch((err) => {
-        res.redirect('/');
+        const data = {
+            user: req.session.userinfo,
+            user_json: JSON.stringify(req.session.userinfo, null, " "),
+            oidc: {
+                issuer_url: config.VV_ISSUER_URL,
+            },
+        };
+        data.oidc.error = err;
+        res.render('index', data);
     });
 });
+
+// /auth/login kicks off the OIDC flow by redirecting to Vault Vision. Once
+// authentication is complete the user will be returned to /auth/callback.
+app.get('/auth/login', authMiddleware());
 
 // Once Vault Vision authenticates a user they will be sent here to complete
 // the OIDC flow.
@@ -131,16 +169,19 @@ app.get('/auth/callback', (req, res) => {
             state: req.session.state,
             nonce: req.session.nonce,
         }).then((tokenSet) => {
-            req.session.sessionTokens = tokenSet;
-            req.session.claims = tokenSet.claims();
 
+            // Vault Vision always provides an access token for the flows used
+            // in this example.
             if (tokenSet.access_token) {
                 oidcClient.userinfo(tokenSet.access_token).then((userinfo) => {
                     req.session.regenerate(function (err) {
                         if (err) {
                             next(err);
                         }
+
+                        req.session.claims = tokenSet.claims();
                         req.session.userinfo = userinfo;
+                        req.session.sessionTokens = tokenSet;
                         req.session.save(function (err) {
                             if (err) {
                                 return next(err);
@@ -193,9 +234,10 @@ app.get('/settings', (req, res) => {
 
 // /auth/settings redirects to the Vault Vision settings page so users can
 // manage their email, password, social logins, webauthn credentials and more.
-app.get('/auth/settings', (req, res) => {
-    res.redirect(config.VV_ISSUER_URL + '/settings');
-});
+//
+// This works by using an oidc prompt named "settings". When the user returns
+// your session will be updated to reflect any changes they made.
+app.get('/auth/settings', authMiddleware("settings"));
 
 app.use(function (req, res, next) {
     next(createError(404));
