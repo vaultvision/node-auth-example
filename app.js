@@ -38,7 +38,7 @@ function getOidcClient() {
             _oidcClient = new iss.Client({
                 client_id: config.VV_CLIENT_ID,
                 client_secret: config.VV_CLIENT_SECRET,
-                redirect_uris: [config.BASE_URL + "/auth/callback"],
+                redirect_uris: [oidcCallbackUrl.toString()],
                 response_types: ['code'],
             });
             resolve(_oidcClient);
@@ -67,7 +67,6 @@ function authMiddleware(prompt) {
 
             const opts = {
                 scope: 'openid email profile',
-                resource: oidcCallbackUrl,
                 code_challenge: codeChallenger,
                 code_challenge_method: 'S256',
                 nonce: nonce,
