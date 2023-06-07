@@ -4,8 +4,8 @@
   "description": "Example application with authentication using OpenID Connect from Vault Vision.",
   "main": "app.js",
   "scripts": {
-    "start": "npx app.js",
-    "dev": "npx nodemon.js --ext 'js,ejs,json,css,html' app.js"
+    "start": "npx app",
+    "dev": "npx nodemon --ext 'js,ejs,json,css,html' app.js"
   },
   "repository": {
     "type": "git",
